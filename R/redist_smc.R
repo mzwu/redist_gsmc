@@ -58,9 +58,10 @@
 #' compatibility with MCMC methods, runs are identified with the `chain`
 #' column in the output.
 #' @param ncores How many threads to use to parallelize plan generation within each
-#' process. The default, 0, will use the number of available cores on the machine
-#' as long as `nsims` and the number of units is large enough. If `runs>1`
-#' you will need to set this manually. If more than one core is used, the
+#' process. The default value is 1 which is single-threading. If `ncores` is set
+#' to 0 it will use the number of available cores on the machine
+#' as long as `nsims` and the number of units is large enough.
+#' If more than one core is used, the
 #' sampler output will not be fully reproducible with `set.seed()`. If full
 #' reproducibility is desired, set `ncores=1` and `nproc=1`.
 #' @param init_particles Either a [redist_plans] object or a matrix of partial
@@ -229,7 +230,7 @@ redist_smc <- function(
   constraints = list(),
   resample = TRUE,
   runs = 1L,
-  ncores = 0L,
+  ncores = 1L,
   init_particles = NULL,
   init_seats = NULL,
   init_weights = NULL,
@@ -864,17 +865,13 @@ redist_smc <- function(
   if (!is.null(exist_name) && !isFALSE(ref_name) && ndists == final_dists) {
     ref_name <- if (!is.null(ref_name)) ref_name else exist_name
 
-    if(districting_scheme == "multiple"){
-        ref_seats <- attr(map, "existing_col_seats")
-    }else{
-        ref_seats <- rep(1L, ndists)
-    }
+    ref_plan_list <- get_ref_plan_and_seats(map)
 
     out <- add_reference(
         plans = out,
-        ref_plan = map[[exist_name]],
+        ref_plan = ref_plan_list$ref_plan,
         name = ref_name,
-        ref_seats = ref_seats)
+        ref_seats = ref_plan_list$ref_seats)
   }
 
   out
@@ -1113,7 +1110,7 @@ extract_control_params <- function(control) {
 #'     and a value of true indicates that step is a mergesplit step.
 #' @noRd
 extract_ms_params <- function(ms_params, total_smc_steps) {
-  ms_param_names <- c("mh_accept_per_smc", "ms_frequency", "pair_rule")
+  ms_param_names <- c("mh_accept_per_smc", "frequency", "pair_rule")
 
   # create merge split parameter information
   if (is.list(ms_params) && any(ms_param_names %in% names(ms_params))) {
@@ -1133,8 +1130,12 @@ extract_ms_params <- function(ms_params, total_smc_steps) {
     }
 
     # check if the frequency was passed else default to after every step
-    if ("ms_frequency" %in% names(ms_params)) {
-      ms_frequency <- ms_params[["ms_frequency"]]
+    if ("frequency" %in% names(ms_params)) {
+      ms_frequency <- ms_params[["frequency"]]
+      # ensure its integers
+      if(!rlang::is_integerish(ms_frequency)){
+          cli::cli_abort("{.arg frequency} must be a integer valued")
+      }
     } else {
       # else default to after every step
       ms_frequency <- 1L
@@ -1162,26 +1163,47 @@ extract_ms_params <- function(ms_params, total_smc_steps) {
 
   if (!run_ms) {
     merge_split_step_vec <- rep(FALSE, total_smc_steps)
-  } else if (ms_frequency == 1) {
-    # if frequency 1 then do after every step
-    merge_split_step_vec <- rep(FALSE, total_smc_steps)
-    # Now add merge split every `ms_frequency` steps
-    # insertion trick
-    # https://stackoverflow.com/questions/1493969/insert-elements-into-a-vector-at-given-indexes
-    ind <- seq(from = ms_frequency, to = total_smc_steps, by = ms_frequency)
-    val <- c(merge_split_step_vec, rep(TRUE, length(ind)))
-    id <- c(seq_along(merge_split_step_vec), ind + 0.5)
+  } else if(rlang::is_scalar_integerish(ms_frequency)){
+      # check if its a scalar
+      if (ms_frequency >= 1) {
+          # then we do merge split after every ms_frequency-th step.
+          ms_frequency <- min(ms_frequency, total_smc_steps)
 
-    # number of merge split is sum of trues
-    merge_split_step_vec <- val[order(id)]
-  } else if (ms_frequency == -1) {
-    # if negative 1 then just put at the end
-    merge_split_step_vec <- rep(FALSE, total_smc_steps)
-    merge_split_step_vec <- c(
-      merge_split_step_vec,
-      TRUE
-    )
+          merge_split_step_vec <- rep(FALSE, total_smc_steps)
+          insert_positions <- seq(ms_frequency, total_smc_steps, by = ms_frequency)
+
+          # Build the result
+          offset <- 0
+
+          for (pos in insert_positions) {
+              idx <- pos + offset
+              merge_split_step_vec <- append(merge_split_step_vec, TRUE, after = idx)
+              offset <- offset + 1
+          }
+      }else if (ms_frequency <= -1) {
+          # if its a negative number then that means the last ms_frequency steps
+          # make sure its absolute value is less than the number of smc steps
+          if(abs(ms_frequency) > total_smc_steps){
+              ms_frequency <- -total_smc_steps
+          }
+
+          merge_split_step_vec <- rep(FALSE, total_smc_steps)
+          # This makes it so we run mergesplit after the last abs(ms_frequency)
+          # SMC steps
+          freq <- abs(ms_frequency)
+          stopifnot(freq <= length(merge_split_step_vec))
+          merge_split_step_vec <- c(
+              rep(FALSE, length(merge_split_step_vec) - freq),
+              rep(c(FALSE, TRUE), times = freq)
+          )
+      }else{
+          cli::cli_abort("{.arg frequency} cannot be 0")
+      }
+  } else{
+      # else that means its a vector of specific SMC steps to run it after
+      cli::cli_abort("Specific step {.arg frequency} is not implemented yet!")
   }
+
 
   extracted_ms_params <- list(
     run_ms = run_ms,

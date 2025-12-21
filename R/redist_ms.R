@@ -127,7 +127,7 @@ redist_mergesplit <- function(
   split_params = NULL,
   pair_rule = "uniform",
   init_seats = NULL,
-  ncores = NULL,
+  ncores = 1L,
   cl_type = "PSOCK",
   return_all = TRUE,
   init_name = NULL,
@@ -158,7 +158,7 @@ redist_mergesplit <- function(
   }
 
     # get parallel related params
-    if (is.null(ncores)) {
+    if (ncores <= 0) {
         ncores <- parallel::detectCores()
         if (ncores <= 0) ncores <- 1
     }
@@ -228,14 +228,18 @@ redist_mergesplit <- function(
 
 
   exist_name <- attr(map, "existing_col")
-  exist_seats <- attr(map, "existing_col_seats")
   if (is.null(init_plan)) {
     if (!is.null(exist_name)) {
+        ref_plan_list <- get_ref_plan_and_seats(map)
+
       init_plan <- matrix(
-        rep(get_existing(map), chains),
+        rep(ref_plan_list$ref_plan, chains),
         ncol = chains,
-        nrow = length(get_existing(map))
+        nrow = length(ref_plan_list$ref_plan)
       )
+
+      init_seats <- replicate(chains, ref_plan_list$ref_seats)
+
       if (is.null(init_name)) {
         init_names <- rep(exist_name, chains)
       } else {
@@ -312,14 +316,20 @@ redist_mergesplit <- function(
     } else {
       init_names <- paste(init_name, seq_len(chains))
     }
-  } else {
-    if (is.null(init_seats)) {
-      if (districting_scheme == "single") {
-        init_seats <- matrix(1L, nrow = ndists, ncol = ncol(init_plan))
-      } else {
-          init_seats <- replicate(chains, exist_seats)
+  }else {
+      if (is.null(init_seats)) {
+          if (districting_scheme == "single") {
+              init_seats <- matrix(1L, nrow = ndists, ncol = ncol(init_plan))
+          } else {
+              init_seats <- infer_plan_seats(
+                  init_plan,
+                  nseats,
+                  pop,
+                  pop_bounds[1],
+                  pop_bounds[3]
+              )
+          }
       }
-    }
   }
 
 

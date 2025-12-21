@@ -21,6 +21,9 @@
 \alias{add_constr_phase_commute}
 \alias{add_constr_split_feeders}
 \alias{add_constr_capacity}
+\alias{add_constr_total_plan_splits}
+\alias{add_constr_plan_incumbency}
+\alias{add_constr_min_group_frac}
 \alias{add_constr_custom}
 \alias{add_constr_custom_plan}
 \title{Sampling constraints}
@@ -179,6 +182,29 @@ add_constr_capacity(
   schools,
   schools_capacity,
   only_districts = TRUE,
+add_constr_total_plan_splits(
+  constr,
+  strength,
+  admin,
+  only_nregions = FALSE,
+  thresh = NULL
+)
+
+add_constr_plan_incumbency(
+  constr,
+  strength,
+  incumbents,
+  only_nregions = FALSE,
+  thresh = NULL
+)
+
+add_constr_min_group_frac(
+  constr,
+  strength,
+  group_pops,
+  total_pops,
+  min_fracs,
+  only_nregions = FALSE,
   thresh = NULL
 )
 
@@ -247,6 +273,12 @@ your \link{redist_map}, entering schools = c(1, 2) would indicate that.}
 \item{lower}{The reference map for the split feeders constraint,, i.e. lower-level school attendance areas.}
 
 \item{schools_capacity}{A vector of capacities for each school.}
+\item{group_pops}{A list of vectors of target group populations}
+
+\item{total_pops}{A list of vectors of total populations}
+
+\item{min_fracs}{A vector of minimum fraction thresholds for each of the
+different population sets}
 
 \item{fn}{A function}
 }
@@ -364,6 +396,10 @@ This can especially slow down performance on Spanning Forest and Linking Edge
 Space as the weights for those spaces tend to be the slowest step.
 These effects can be somewhat mitigated by by increasing the number of
 processes(\code{nproc}) if multiple runs are being done.
+
+The \code{min_group_frac} constraint adds a term counting the number of districts
+in a plan where the fraction \code{group_pop/total_pop} is greater than or equal to
+a certain threshold, \code{min_frac} for each of the populations passed in.
 
 The \code{custom_plan} constraint allows the user to specify their own constraint using
 a function which evaluates the entire plan. Unlike the \code{custom} constraint,

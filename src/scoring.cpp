@@ -13,6 +13,86 @@ constexpr bool DEBUG_SCORING_VERBOSE = false;
 // helpers
 
 
+std::vector<std::vector<int>> build_admin_vertex_lists(
+    const Graph &g, const arma::uvec &admin_units
+){
+    // we assume admin units is 1 indexed and if `k` units then values are in `1:k`
+    int const num_counties = arma::max(admin_units);
+    std::vector<std::vector<int>> admin_vertex_lists(num_counties);
+    // nothing if only 1 county 
+    if(num_counties == 1) return admin_vertex_lists;
+    // else walk through the graph and add each vertex to list for each unit
+    int const V = g.size();
+
+    for (int v = 0; v < V; v++)
+    {
+        int v_admin_unit = admin_units[v]-1;
+        admin_vertex_lists[v_admin_unit].push_back(v);
+    }
+    return admin_vertex_lists;
+}
+
+// counts how many administrative unit are split by a plan
+// We say a unit is split if there is more than one region inside it
+// The region_reindex_vec lets us map different region ids to the same 
+// index for the purpose of this function
+int count_admin_splits(
+    std::vector<std::vector<int>> const &admin_vertex_lists, 
+    PlanVector const &region_ids, std::vector<int> const &region_reindex_vec
+){
+    int split_units = 0;
+    int const num_admin_units = admin_vertex_lists.size();
+
+    for (size_t admin_unit_i = 0; admin_unit_i < num_admin_units; admin_unit_i++)
+    {
+        // Find what region the first vertex in the unit is 
+        auto const first_unit_vertex = admin_vertex_lists[admin_unit_i][0];
+        auto const first_unit_region = region_reindex_vec[region_ids[first_unit_vertex]];
+        // We see if all the other vertices are in the same region 
+        for (auto const v: admin_vertex_lists[admin_unit_i]){
+            auto const v_unit_region = region_reindex_vec[region_ids[v]];
+            if(first_unit_region != v_unit_region){
+                ++split_units;
+                break;
+            }
+        }
+        
+    }
+
+    return split_units;
+}
+
+
+
+int count_total_admin_splits(
+    std::vector<std::vector<int>> const &admin_vertex_lists, 
+    std::vector<std::set<int>> &admin_unit_regions,
+    PlanVector const &region_ids, std::vector<int> const &region_reindex_vec
+){
+    int total_splits = 0;
+    int const num_admin_units = admin_vertex_lists.size();
+
+    // clear each units sets 
+    for (size_t i = 0; i < num_admin_units; i++)
+    {
+        admin_unit_regions[i].clear();
+    }
+    
+
+    for (size_t admin_unit_i = 0; admin_unit_i < num_admin_units; admin_unit_i++)
+    {
+        // First count how many different regions are in that admin unit
+        for (auto const v: admin_vertex_lists[admin_unit_i]){
+            auto const v_unit_region = region_reindex_vec[region_ids[v]];
+            admin_unit_regions[admin_unit_i].insert(v_unit_region);
+        }
+        // The number of splits is the number of regions in the admin unit minus 1
+        total_splits += admin_unit_regions[admin_unit_i].size() - 1;
+    }
+
+    return total_splits;
+}
+
 /*
  * Given a contiguous administrative units this builds a forest on the 
  * admin units where each tree is a spanning tree on an admin unit along
@@ -94,45 +174,115 @@ std::pair<Tree,std::vector<int>> build_admin_forest(
 }
 
 
-
-// counts how many administrative unit are split by a plan
-// We say a unit is split if there is more than one region inside it
-// The region_reindex_vec lets us map different region ids to the same 
-// index for the purpose of this function
-int count_admin_splits(
-    Tree const &admin_forest, std::vector<int> const &admin_forest_roots,
-    PlanVector const &region_ids, std::vector<int> const &region_reindex_vec,
-    CircularQueue<int> &vertex_queue
+// Counts how many districts have more than 1 incumbent in them 
+// NOTE: incumbents is 1-indexed
+int count_plan_incumbent_pairings(
+    arma::uvec const &incumbents, 
+    std::vector<int> &region_incumbent_counts, 
+    PlanVector const &region_ids, 
+    std::vector<int> const &region_reindex_vec,
+    std::vector<bool> const &region_is_district
 ){
-    int split_units = 0;
 
-    // For each admin unit start at the root of its tree
-    for (auto const admin_tree_root : admin_forest_roots){
-        vertex_queue.clear();
-        auto const root_region = region_reindex_vec[region_ids[admin_tree_root]];
+    // set each region to zero 
+    std::fill(region_incumbent_counts.begin(), region_incumbent_counts.end(), 0);
 
-        vertex_queue.push(admin_tree_root);
 
-        // walk through the entire unit to see if any different regions 
-        while(!vertex_queue.empty()){
-            auto const v = vertex_queue.pop();
-            auto const v_region = region_reindex_vec[region_ids[v]];
+    int districts_with_multiple_incumbents = 0;
 
-            // if we found a different region immediately break
-            if(v_region != root_region){
-                split_units++;
+    // Now we iterate through each incumbent 
+    int n_inc = incumbents.size();
+    for (int i = 0; i < n_inc; i++) {
+        // find the region the incumbent is in
+        auto const incumbent_i_region = region_reindex_vec[region_ids[incumbents[i] - 1]];
+        // increase the count
+        region_incumbent_counts[incumbent_i_region]++;
+    }
+
+    // Now count the number of districts with more than 1 incumbent 
+    for (size_t region_id = 0; region_id < region_incumbent_counts.size(); region_id++)
+    {
+        // ignore if not a district
+        if(!region_is_district[region_reindex_vec[region_id]]) continue;
+
+        if(region_incumbent_counts[region_reindex_vec[region_id]] > 1){
+            districts_with_multiple_incumbents++;
+        }
+    }
+
+    return districts_with_multiple_incumbents;
+
+}
+
+int count_min_threshold_regions(
+    int const num_populations,
+    std::vector<arma::vec> const &group_pop, 
+    std::vector<arma::vec> const &total_pop, 
+    std::vector<double> const &min_fracs,
+    std::vector<bool> const &region_ids_to_count,
+    PlanVector const &region_ids, std::vector<int> const &region_reindex_vec,
+    std::vector<std::vector<double>> &plan_group_pops, 
+    std::vector<std::vector<double>> &plan_total_pops
+){
+    // clear the group populations 
+    for (size_t i = 0; i < num_populations; i++)
+    {
+        std::fill(plan_group_pops[i].begin(), plan_group_pops[i].end(), 0.0);
+        std::fill(plan_total_pops[i].begin(), plan_total_pops[i].end(), 0.0);
+    }
+    
+
+
+    auto const V = region_ids.size();
+    for (size_t v = 0; v < V; v++)
+    {
+        // get the reinexed region id
+        auto const v_region = region_reindex_vec[region_ids[v]];
+        // REprintf("Count=%s| v=%u region %u reindex %u\n", (region_ids_to_count[v_region] ? "TRUE" : "FALSE"),
+        //     v, region_ids[v], region_reindex_vec[region_ids[v]]);
+        // check if this region is one we care about 
+        if(!region_ids_to_count[v_region]) continue;
+
+        for (size_t i = 0; i < num_populations; i++)
+        {
+            // add to the counts for these two regions 
+            plan_group_pops[i][v_region] += group_pop[i][v];
+            plan_total_pops[i][v_region] += total_pop[i][v];
+        }
+        
+    }
+
+    // Now count how many clear the threshold 
+    int regions_above_threshold = 0;
+
+    for (size_t region_id = 0; region_id < region_ids_to_count.size(); region_id++)
+    {
+        // skip if we don't count this region 
+        if(!region_ids_to_count[region_id]) continue; 
+
+        bool region_ok = true;
+        
+        for (size_t i = 0; i < num_populations; i++)
+        {
+            // break if population is zero or ratio over threshold
+            if(plan_total_pops[i][region_id] == 0.0 ||
+                plan_group_pops[i][region_id] / plan_total_pops[i][region_id] < min_fracs[i]){
+                region_ok = false;
                 break;
-            }
-            // else add all the children to the queue
-            for (auto const v_child : admin_forest[v]){
-                vertex_queue.push(v_child);
             }
         }
 
-    }
-    return split_units;
-}
+        // skip if all regions are ok
+        if(region_ok){
+            regions_above_threshold++;
+        }
 
+        // REprintf("Region %u - Ratio %f\n", region_id, pop_ratio);
+    }
+    
+    return regions_above_threshold;
+
+}
 
 
 //
@@ -761,12 +911,10 @@ double PlanSplitsConstraint::compute_raw_plan_constraint_score(
     std::iota(region_reindex_vec.begin(), region_reindex_vec.end(), 0);
 
     auto splits = count_admin_splits(
-        admin_forest, admin_forest_roots,
-        region_ids, region_reindex_vec,
-        vertex_queue
+        admin_vertex_lists, 
+        region_ids, region_reindex_vec
     );
 
-    // REprintf("%d units | %d splits!\n", num_admin_units, splits);
     return splits;
 
 }
@@ -786,13 +934,211 @@ double PlanSplitsConstraint::compute_raw_merged_plan_constraint_score(
     }
 
     auto splits = count_admin_splits(
-        admin_forest, admin_forest_roots,
-        plan.region_ids, region_reindex_vec,
-        vertex_queue
+        admin_vertex_lists, 
+        plan.region_ids, region_reindex_vec
     );
 
-    // REprintf("%d units | %d splits!\n", num_admin_units, splits);
     return splits;
+}
+
+
+double TotalPlanSplitsConstraint::compute_raw_plan_constraint_score(
+    int const num_regions, 
+    PlanVector const &region_ids, RegionSizes const &region_sizes, IntPlanAttribute const &region_pops
+) const{
+    // no splits if blank map or only 1 admin unit 
+    if(num_regions == 1 || num_admin_units == 1) return 0;
+
+    // set the reindex for each region to be itself
+    std::iota(region_reindex_vec.begin(), region_reindex_vec.end(), 0);
+
+    auto splits = count_total_admin_splits(
+        admin_vertex_lists, admin_unit_regions,
+        region_ids, region_reindex_vec
+    );
+
+    return splits;
+
+}
+
+double TotalPlanSplitsConstraint::compute_raw_merged_plan_constraint_score(
+    const Plan &plan, int const region1_id, int const region2_id) const{
+    // no splits if blank map or only 1 admin unit 
+    if(plan.num_regions == 2 || num_admin_units == 1) return 0;
+
+    for (int region_id = 0; region_id < plan.num_regions; region_id++)
+    {
+        if(region_id == region2_id){
+            region_reindex_vec[region2_id] = region1_id;
+        }else{
+            region_reindex_vec[region_id] = region_id;
+        }
+    }
+
+    auto splits = count_total_admin_splits(
+        admin_vertex_lists, admin_unit_regions,
+        plan.region_ids, region_reindex_vec
+    );
+
+    return splits;
+}
+
+
+
+double PlanIncumbentConstraint::compute_raw_plan_constraint_score(
+    int const num_regions, 
+    PlanVector const &region_ids, RegionSizes const &region_sizes, IntPlanAttribute const &region_pops
+) const{
+    // no splits if blank map or only 1 admin unit 
+    if(num_regions == 1 || incumbents.size() == 1) return 0;
+
+
+    // set the reindex for each region to be itself
+    std::iota(region_reindex_vec.begin(), region_reindex_vec.end(), 0);
+
+    // Now just mark which regions are districts 
+    for (size_t i = 0; i < num_regions; i++)
+    {
+        region_is_district[i] = is_district[region_sizes[i]];
+    }
+
+    int incumbent_count = count_plan_incumbent_pairings(
+        incumbents, 
+        region_incumbent_counts, 
+        region_ids, 
+        region_reindex_vec,
+        region_is_district
+    );
+
+    return incumbent_count;
+
+}
+
+double PlanIncumbentConstraint::compute_raw_merged_plan_constraint_score(
+    const Plan &plan, int const region1_id, int const region2_id) const{
+    // no splits if blank map or only 1 admin unit 
+    if(plan.num_regions == 2 || incumbents.size() == 1) return 0;
+
+    // set region2 to reindex to region1
+    for (int region_id = 0; region_id < plan.num_regions; region_id++)
+    {
+        if(region_id == region2_id){
+            region_reindex_vec[region2_id] = region1_id;
+        }else{
+            region_reindex_vec[region_id] = region_id;
+        }
+    }
+
+    // Now just mark which regions are districts 
+    for (size_t i = 0; i < plan.num_regions; i++)
+    {
+        region_is_district[i] = is_district[plan.region_sizes[i]];
+    }
+    // Update the merged region 
+    region_is_district[region2_id] = false;
+    region_is_district[region1_id] = is_district[plan.region_sizes[region1_id] + plan.region_sizes[region2_id]];
+
+    int incumbent_count = count_plan_incumbent_pairings(
+        incumbents, 
+        region_incumbent_counts, 
+        plan.region_ids, 
+        region_reindex_vec,
+        region_is_district
+    );
+
+    return incumbent_count;
+}
+
+
+double MinGroupFracConstraint::compute_raw_plan_constraint_score(
+    int const num_regions, 
+    PlanVector const &region_ids, RegionSizes const &region_sizes, IntPlanAttribute const &region_pops
+) const{
+    // if just 1 region we just do the sums
+    if(num_regions == 1){
+        double pops_above = 0.0;
+        for (size_t i = 0; i < num_populations; i++)
+        {
+            if(arma::sum(group_pops[i])/arma::sum(total_pops[i]) >= min_fracs[i]){
+                pops_above++;
+            }
+        }
+        
+        return pops_above;
+    }
+
+    // set the reindex for each region to be itself
+    std::iota(region_reindex_vec.begin(), region_reindex_vec.end(), 0);
+    std::fill(region_ids_to_count.begin(), region_ids_to_count.end(), false);
+
+    // set the reindex for each region to be itself and make all of those ok
+    for (size_t i = 0; i < num_regions; i++)
+    {
+        region_reindex_vec[i] = i;
+        region_ids_to_count[i] = true;
+    }
+
+    
+    
+    auto num_regions_above_threshold = count_min_threshold_regions(
+        num_populations, group_pops, total_pops, 
+        min_fracs,
+        region_ids_to_count,
+        region_ids, region_reindex_vec,
+        plan_group_pops, plan_total_pops
+    );
+
+    // if(num_regions_above_threshold >= 1){
+    //     REprintf("Min Frac %f | %d regions above!\n", min_frac, num_regions_above_threshold);
+    // }
+
+    return static_cast<double>(num_regions_above_threshold);
+
+}
+
+double MinGroupFracConstraint::compute_raw_merged_plan_constraint_score(
+    const Plan &plan, int const region1_id, int const region2_id) const{
+
+    // if just 1 region we just sum the two 
+    if(plan.num_regions == 1){
+        throw Rcpp::exception("Calling MinGroupFracConstraint Merge on a 1 region plan!\n");
+        return 0.0;
+    }else if(plan.num_regions == 2){
+        double pops_above = 0.0;
+        for (size_t i = 0; i < num_populations; i++)
+        {
+            if(arma::sum(group_pops[i])/arma::sum(total_pops[i]) >= min_fracs[i]){
+                pops_above++;
+            }
+        }
+        
+        return pops_above;
+    }
+
+    // set the reindex for each region to be itself
+    std::iota(region_reindex_vec.begin(), region_reindex_vec.end(), 0);
+    std::fill(region_ids_to_count.begin(), region_ids_to_count.end(), false);
+
+    // set the reindex for each region to be itself and make all of those ok
+    for (size_t i = 0; i < plan.num_regions; i++)
+    {
+        region_reindex_vec[i] = i;
+        region_ids_to_count[i] = true;
+    }
+
+    // merge region2 into region 1 
+    region_reindex_vec[region2_id] = region1_id;
+    region_ids_to_count[region2_id] = false;
+    
+    auto num_regions_above_threshold = count_min_threshold_regions(
+        num_populations, group_pops, total_pops, 
+        min_fracs,
+        region_ids_to_count,
+        plan.region_ids, region_reindex_vec,
+        plan_group_pops, plan_total_pops
+    );
+
+    return static_cast<double>(num_regions_above_threshold);
 }
 
 
@@ -851,148 +1197,67 @@ any_soft_custom_constraints(false), any_hard_custom_constraints(false){
         Rcpp::List constr = constraints["pop_dev"];
         for (int i = 0; i < constr.size(); i++) {
             List constr_inst = constr[i];
-            double strength = constr_inst["strength"];
-            if (strength != 0) {
-                bool constr_score_districts_only = false;
-                if (constr_inst.containsElementNamed("only_districts")){
-                    constr_score_districts_only = as<bool>(constr_inst["only_districts"]);
-                }
-                bool hard_constraint = false;
-                if (constr_inst.containsElementNamed("hard_constraint")){
-                    hard_constraint = as<bool>(constr_inst["hard_constraint"]);
-                }
-                double hard_threshold = 0.0;
-                if (constr_inst.containsElementNamed("hard_threshold")){
-                    hard_threshold = as<double>(constr_inst["hard_threshold"]);
-                }
-                region_constraint_ptrs.emplace_back(
-                    std::make_unique<PopDevConstraint>(
-                        strength, 
-                        map_params.target, map_params.pop,
-                        constr_score_districts_only, hard_constraint, hard_threshold
-                    ));
-            }
+            region_constraint_ptrs.emplace_back(
+                std::make_unique<PopDevConstraint>(
+                    constr_inst, 
+                    map_params.target, map_params.pop
+                ));
         }
     }
     if (constraints.containsElementNamed("status_quo")) {
         Rcpp::List constr = constraints["status_quo"];
         for (int i = 0; i < constr.size(); i++) {
             List constr_inst = constr[i];
-            double strength = constr_inst["strength"];
-            if (strength != 0) {
-                bool constr_score_districts_only = false;
-                if (constr_inst.containsElementNamed("only_districts")){
-                    constr_score_districts_only = as<bool>(constr_inst["only_districts"]);
-                }
-                bool hard_constraint = false;
-                if (constr_inst.containsElementNamed("hard_constraint")){
-                    hard_constraint = as<bool>(constr_inst["hard_constraint"]);
-                }
-                double hard_threshold = 0.0;
-                if (constr_inst.containsElementNamed("hard_threshold")){
-                    hard_threshold = as<double>(constr_inst["hard_threshold"]);
-                }
-                region_constraint_ptrs.emplace_back(
-                    std::make_unique<StatusQuoConstraint>(
-                        strength, 
-                        as<arma::uvec>(constr_inst["current"]), map_params.pop,
-                        map_params.ndists, as<int>(constr_inst["n_current"]), map_params.V,
-                        constr_score_districts_only, hard_constraint, hard_threshold
-                    ));
-            }
+            region_constraint_ptrs.emplace_back(
+                std::make_unique<StatusQuoConstraint>(
+                    constr_inst, 
+                    as<arma::uvec>(constr_inst["current"]), map_params.pop,
+                    map_params.ndists, as<int>(constr_inst["n_current"]), map_params.V
+                ));
         }
     }
     if (constraints.containsElementNamed("segregation")) {
         Rcpp::List constr = constraints["segregation"];
         for (int i = 0; i < constr.size(); i++) {
             List constr_inst = constr[i];
-            double strength = constr_inst["strength"];
-            if (strength != 0) {
-                bool constr_score_districts_only = false;
-                if (constr_inst.containsElementNamed("only_districts")){
-                    constr_score_districts_only = as<bool>(constr_inst["only_districts"]);
-                }
-                bool hard_constraint = false;
-                if (constr_inst.containsElementNamed("hard_constraint")){
-                    hard_constraint = as<bool>(constr_inst["hard_constraint"]);
-                }
-                double hard_threshold = 0.0;
-                if (constr_inst.containsElementNamed("hard_threshold")){
-                    hard_threshold = as<double>(constr_inst["hard_threshold"]);
-                }
-                region_constraint_ptrs.emplace_back(
-                    std::make_unique<SegregationConstraint>(
-                        strength, 
-                        as<arma::uvec>(constr_inst["group_pop"]), 
-                        as<arma::uvec>(constr_inst["total_pop"]), 
-                        map_params.V, 
-                        constr_score_districts_only, hard_constraint, hard_threshold
-                    ));
-            }
+            region_constraint_ptrs.emplace_back(
+                std::make_unique<SegregationConstraint>(
+                    constr_inst, 
+                    as<arma::uvec>(constr_inst["group_pop"]), 
+                    as<arma::uvec>(constr_inst["total_pop"]), 
+                    map_params.V
+                ));
         }
     }
     if (constraints.containsElementNamed("grp_pow")) {
         Rcpp::List constr = constraints["grp_pow"];
         for (int i = 0; i < constr.size(); i++) {
             List constr_inst = constr[i];
-            double strength = constr_inst["strength"];
-            if (strength != 0) {
-                bool constr_score_districts_only = false;
-                if (constr_inst.containsElementNamed("only_districts")){
-                    constr_score_districts_only = as<bool>(constr_inst["only_districts"]);
-                }
-                bool hard_constraint = false;
-                if (constr_inst.containsElementNamed("hard_constraint")){
-                    hard_constraint = as<bool>(constr_inst["hard_constraint"]);
-                }
-                double hard_threshold = 0.0;
-                if (constr_inst.containsElementNamed("hard_threshold")){
-                    hard_threshold = as<double>(constr_inst["hard_threshold"]);
-                }
-                region_constraint_ptrs.emplace_back(
-                    std::make_unique<GroupPowerConstraint>(
-                        strength, map_params.V,
-                        as<arma::uvec>(constr_inst["group_pop"]), 
-                        as<arma::uvec>(constr_inst["total_pop"]),
-                        as<double>(constr_inst["tgt_group"]),
-                        as<double>(constr_inst["tgt_other"]),
-                        as<double>(constr_inst["pow"]),
-                         constr_score_districts_only, hard_constraint, hard_threshold
-                    ));
-            }
+            region_constraint_ptrs.emplace_back(
+                std::make_unique<GroupPowerConstraint>(
+                    constr_inst, map_params.V,
+                    as<arma::uvec>(constr_inst["group_pop"]), 
+                    as<arma::uvec>(constr_inst["total_pop"]),
+                    as<double>(constr_inst["tgt_group"]),
+                    as<double>(constr_inst["tgt_other"]),
+                    as<double>(constr_inst["pow"])
+                ));
         }
     }
     if (constraints.containsElementNamed("compet")) {
         Rcpp::List constr = constraints["compet"];
         for (int i = 0; i < constr.size(); i++) {
             List constr_inst = constr[i];
-            double strength = constr_inst["strength"];
-            if (strength != 0) {
-                bool constr_score_districts_only = false;
-                if (constr_inst.containsElementNamed("only_districts")){
-                    constr_score_districts_only = as<bool>(constr_inst["only_districts"]);
-                }
-                bool hard_constraint = false;
-                if (constr_inst.containsElementNamed("hard_constraint")){
-                    hard_constraint = as<bool>(constr_inst["hard_constraint"]);
-                }
-                double hard_threshold = 0.0;
-                if (constr_inst.containsElementNamed("hard_threshold")){
-                    hard_threshold = as<double>(constr_inst["hard_threshold"]);
-                }
-                // Competition is just group power with group target and other target .5
-                arma::uvec dvote = constr_inst["dvote"];
-                arma::uvec total = dvote + as<arma::uvec>(constr_inst["rvote"]);
-
-                region_constraint_ptrs.emplace_back(
-                    std::make_unique<GroupPowerConstraint>(
-                        strength, map_params.V,
-                        dvote, total,
-                        .5, .5, 
-                        as<double>(constr_inst["pow"]),
-                         constr_score_districts_only, hard_constraint, hard_threshold
-                    ));
-            }
+            // Competition is just group power with group target and other target .5
+            arma::uvec dvote = constr_inst["dvote"];
+            arma::uvec total = dvote + as<arma::uvec>(constr_inst["rvote"]);
+            region_constraint_ptrs.emplace_back(
+                std::make_unique<GroupPowerConstraint>(
+                    constr_inst, map_params.V,
+                    dvote, total,
+                    .5, .5, 
+                    as<double>(constr_inst["pow"])
+            ));
         }
     }
     if (constraints.containsElementNamed("grp_hinge")) {
@@ -1000,27 +1265,11 @@ any_soft_custom_constraints(false), any_hard_custom_constraints(false){
         Rcpp::List constr = constraints["grp_hinge"];
         for (int i = 0; i < constr.size(); i++) {
             List constr_inst = constr[i];
-            double strength = constr_inst["strength"];
-            if (strength != 0) {
-                bool constr_score_districts_only = false;
-                if (constr_inst.containsElementNamed("only_districts")){
-                    constr_score_districts_only = as<bool>(constr_inst["only_districts"]);
-                }
-                bool hard_constraint = false;
-                if (constr_inst.containsElementNamed("hard_constraint")){
-                    hard_constraint = as<bool>(constr_inst["hard_constraint"]);
-                }
-                double hard_threshold = 0.0;
-                if (constr_inst.containsElementNamed("hard_threshold")){
-                    hard_threshold = as<double>(constr_inst["hard_threshold"]);
-                }
-                region_constraint_ptrs.emplace_back(
-                    std::make_unique<GroupHingeConstraint>(
-                        strength, map_params.V, as<arma::vec>(constr_inst["tgts_group"]),
-                        as<arma::uvec>(constr_inst["group_pop"]), as<arma::uvec>(constr_inst["total_pop"]),
-                        constr_score_districts_only, hard_constraint, hard_threshold
-                    ));
-            }
+            region_constraint_ptrs.emplace_back(
+                std::make_unique<GroupHingeConstraint>(
+                    constr_inst, map_params.V, as<arma::vec>(constr_inst["tgts_group"]),
+                    as<arma::uvec>(constr_inst["group_pop"]), as<arma::uvec>(constr_inst["total_pop"])
+            ));
         }
     }
     if (constraints.containsElementNamed("grp_inv_hinge")) {
@@ -1029,167 +1278,71 @@ any_soft_custom_constraints(false), any_hard_custom_constraints(false){
         Rcpp::List constr = constraints["grp_inv_hinge"];
         for (int i = 0; i < constr.size(); i++) {
             List constr_inst = constr[i];
-            double strength = constr_inst["strength"];
-            if (strength != 0) {
-                bool constr_score_districts_only = false;
-                if (constr_inst.containsElementNamed("only_districts")){
-                    constr_score_districts_only = as<bool>(constr_inst["only_districts"]);
-                }
-                bool hard_constraint = false;
-                if (constr_inst.containsElementNamed("hard_constraint")){
-                    hard_constraint = as<bool>(constr_inst["hard_constraint"]);
-                }
-                double hard_threshold = 0.0;
-                if (constr_inst.containsElementNamed("hard_threshold")){
-                    hard_threshold = as<double>(constr_inst["hard_threshold"]);
-                }
-                region_constraint_ptrs.emplace_back(
-                    std::make_unique<GroupHingeConstraint>(
-                        strength, map_params.V, as<arma::vec>(constr_inst["tgts_group"]),
-                        as<arma::uvec>(constr_inst["group_pop"]), as<arma::uvec>(constr_inst["total_pop"]),
-                        constr_score_districts_only, hard_constraint, hard_threshold
-                    ));
-            }
+            region_constraint_ptrs.emplace_back(
+                std::make_unique<GroupHingeConstraint>(
+                    constr_inst, map_params.V, as<arma::vec>(constr_inst["tgts_group"]),
+                    as<arma::uvec>(constr_inst["group_pop"]), as<arma::uvec>(constr_inst["total_pop"])
+                ));
         }
     }
     if (constraints.containsElementNamed("incumbency")) {
         Rcpp::List constr = constraints["incumbency"];
         for (int i = 0; i < constr.size(); i++) {
             List constr_inst = constr[i];
-            double strength = constr_inst["strength"];
-            if (strength != 0) {
-                bool constr_score_districts_only = false;
-                if (constr_inst.containsElementNamed("only_districts")){
-                    constr_score_districts_only = as<bool>(constr_inst["only_districts"]);
-                }
-                bool hard_constraint = false;
-                if (constr_inst.containsElementNamed("hard_constraint")){
-                    hard_constraint = as<bool>(constr_inst["hard_constraint"]);
-                }
-                double hard_threshold = 0.0;
-                if (constr_inst.containsElementNamed("hard_threshold")){
-                    hard_threshold = as<double>(constr_inst["hard_threshold"]);
-                }
-                region_constraint_ptrs.emplace_back(
-                    std::make_unique<IncumbentConstraint>(
-                        strength, as<arma::uvec>(constr_inst["incumbents"]),
-                        constr_score_districts_only, hard_constraint, hard_threshold
-                    ));
-            }
+            region_constraint_ptrs.emplace_back(
+                std::make_unique<IncumbentConstraint>(
+                    constr_inst, as<arma::uvec>(constr_inst["incumbents"])
+                ));
         }
     }
     if (constraints.containsElementNamed("splits")) {
         Rcpp::List constr = constraints["splits"];
         for (int i = 0; i < constr.size(); i++) {
             List constr_inst = constr[i];
-            double strength = constr_inst["strength"];
-            if (strength != 0) {
-                bool constr_score_districts_only = false;
-                if (constr_inst.containsElementNamed("only_districts")){
-                    constr_score_districts_only = as<bool>(constr_inst["only_districts"]);
-                }
-                bool hard_constraint = false;
-                if (constr_inst.containsElementNamed("hard_constraint")){
-                    hard_constraint = as<bool>(constr_inst["hard_constraint"]);
-                }
-                double hard_threshold = 0.0;
-                if (constr_inst.containsElementNamed("hard_threshold")){
-                    hard_threshold = as<double>(constr_inst["hard_threshold"]);
-                }
-                region_constraint_ptrs.emplace_back(
-                    std::make_unique<SplitsConstraint>(
-                        strength, 
-                        as<arma::uvec>(constr_inst["admin"]), as<int>(constr_inst["n"]),
-                        smc,
-                        constr_score_districts_only, hard_constraint, hard_threshold
-                    ));
-            }
+            region_constraint_ptrs.emplace_back(
+                std::make_unique<SplitsConstraint>(
+                    constr_inst, 
+                    as<arma::uvec>(constr_inst["admin"]), as<int>(constr_inst["n"]),
+                    smc
+                ));
         }
     }
     if (constraints.containsElementNamed("multisplits")) {
         Rcpp::List constr = constraints["multisplits"];
         for (int i = 0; i < constr.size(); i++) {
             List constr_inst = constr[i];
-            double strength = constr_inst["strength"];
-            if (strength != 0) {
-                bool constr_score_districts_only = false;
-                if (constr_inst.containsElementNamed("only_districts")){
-                    constr_score_districts_only = as<bool>(constr_inst["only_districts"]);
-                }
-                bool hard_constraint = false;
-                if (constr_inst.containsElementNamed("hard_constraint")){
-                    hard_constraint = as<bool>(constr_inst["hard_constraint"]);
-                }
-                double hard_threshold = 0.0;
-                if (constr_inst.containsElementNamed("hard_threshold")){
-                    hard_threshold = as<double>(constr_inst["hard_threshold"]);
-                }
-                region_constraint_ptrs.emplace_back(
-                    std::make_unique<MultisplitsConstraint>(
-                        strength, 
-                        as<arma::uvec>(constr_inst["admin"]), as<int>(constr_inst["n"]),
-                        smc,
-                        constr_score_districts_only, hard_constraint, hard_threshold
-                    ));
-            }
+            region_constraint_ptrs.emplace_back(
+                std::make_unique<MultisplitsConstraint>(
+                    constr_inst, 
+                    as<arma::uvec>(constr_inst["admin"]), as<int>(constr_inst["n"]),
+                    smc
+                ));
         }
     }
     if (constraints.containsElementNamed("total_splits")) {
         Rcpp::List constr = constraints["total_splits"];
         for (int i = 0; i < constr.size(); i++) {
             List constr_inst = constr[i];
-            double strength = constr_inst["strength"];
-            if (strength != 0) {
-                bool constr_score_districts_only = false;
-                if (constr_inst.containsElementNamed("only_districts")){
-                    constr_score_districts_only = as<bool>(constr_inst["only_districts"]);
-                }
-                bool hard_constraint = false;
-                if (constr_inst.containsElementNamed("hard_constraint")){
-                    hard_constraint = as<bool>(constr_inst["hard_constraint"]);
-                }
-                double hard_threshold = 0.0;
-                if (constr_inst.containsElementNamed("hard_threshold")){
-                    hard_threshold = as<double>(constr_inst["hard_threshold"]);
-                }
-                region_constraint_ptrs.emplace_back(
-                    std::make_unique<TotalSplitsConstraint>(
-                        strength, 
-                        as<arma::uvec>(constr_inst["admin"]), as<int>(constr_inst["n"]),
-                        smc,
-                        constr_score_districts_only, hard_constraint, hard_threshold
-                    ));
-            }
+            region_constraint_ptrs.emplace_back(
+                std::make_unique<TotalSplitsConstraint>(
+                    constr_inst, 
+                    as<arma::uvec>(constr_inst["admin"]), as<int>(constr_inst["n"]),
+                    smc
+            ));
         }
     }
     if (constraints.containsElementNamed("polsby")) {
         Rcpp::List constr = constraints["polsby"];
         for (int i = 0; i < constr.size(); i++) {
             List constr_inst = constr[i];
-            double strength = constr_inst["strength"];
-            if (strength != 0) {
-                bool constr_score_districts_only = false;
-                if (constr_inst.containsElementNamed("only_districts")){
-                    constr_score_districts_only = as<bool>(constr_inst["only_districts"]);
-                }
-                bool hard_constraint = false;
-                if (constr_inst.containsElementNamed("hard_constraint")){
-                    hard_constraint = as<bool>(constr_inst["hard_constraint"]);
-                }
-                double hard_threshold = 0.0;
-                if (constr_inst.containsElementNamed("hard_threshold")){
-                    hard_threshold = as<double>(constr_inst["hard_threshold"]);
-                }
-                region_constraint_ptrs.emplace_back(
-                    std::make_unique<PolsbyConstraint>(
-                        strength, map_params.V,
-                        as<arma::ivec>(constr_inst["from"]), 
-                        as<arma::ivec>(constr_inst["to"]),
-                        as<arma::vec>(constr_inst["area"]),
-                        as<arma::vec>(constr_inst["perimeter"]),
-                        constr_score_districts_only, hard_constraint, hard_threshold
-                    ));
-            }
+            region_constraint_ptrs.emplace_back(
+                std::make_unique<PolsbyConstraint>(
+                    constr_inst, map_params.V,
+                    as<arma::ivec>(constr_inst["from"]), 
+                    as<arma::ivec>(constr_inst["to"]),
+                    as<arma::vec>(constr_inst["area"]),
+                    as<arma::vec>(constr_inst["perimeter"])
+                ));
         }
     }
     if (constraints.containsElementNamed("phase_commute")) {
@@ -1302,38 +1455,27 @@ any_soft_custom_constraints(false), any_hard_custom_constraints(false){
         Rcpp::List constr = constraints["custom"];
         for (int i = 0; i < constr.size(); i++) {
             List constr_inst = constr[i];
-            double strength = constr_inst["strength"];
-            if (strength != 0) {
-                bool constr_score_districts_only = false;
-                if (constr_inst.containsElementNamed("only_districts")){
-                    constr_score_districts_only = as<bool>(constr_inst["only_districts"]);
-                }
-                bool hard_constraint = false;
-                if (constr_inst.containsElementNamed("hard_constraint")){
-                    hard_constraint = as<bool>(constr_inst["hard_constraint"]);
-                }
-                double hard_threshold = 0.0;
-                if (constr_inst.containsElementNamed("hard_threshold")){
-                    hard_threshold = as<double>(constr_inst["hard_threshold"]);
-                }
-                region_constraint_ptrs.emplace_back(
-                    std::make_unique<CustomRegionConstraint>(
-                        strength, map_params.V,
-                        as<Rcpp::Function>(constr_inst["fn"]), 
-                        constr_score_districts_only, hard_constraint, hard_threshold
-                    )
-                );
-                // mark custom R constraints as true 
-                any_soft_custom_constraints = true; 
-                // if hard custom constraint note that
-                if(hard_constraint){
-                    any_hard_custom_constraints = true;
-                }
+            bool hard_constraint = false;
+            if (constr_inst.containsElementNamed("hard_constraint")){
+                hard_constraint = as<bool>(constr_inst["hard_constraint"]);
+            }
+            region_constraint_ptrs.emplace_back(
+                std::make_unique<CustomRegionConstraint>(
+                    constr_inst, map_params.V,
+                    as<Rcpp::Function>(constr_inst["fn"])
+                )
+            );
+            // mark custom R constraints as true 
+            any_soft_custom_constraints = true; 
+            // if hard custom constraint note that
+            if(hard_constraint){
+                any_hard_custom_constraints = true;
             }
         }
     }
 
     // Now add plan constraints 
+    // counts splits in the entire plan
     if (constraints.containsElementNamed("plan_splits")) {
         Rcpp::List constr = constraints["plan_splits"];
         for (int i = 0; i < constr.size(); i++) {
@@ -1357,11 +1499,116 @@ any_soft_custom_constraints(false), any_hard_custom_constraints(false){
             if (strength != 0) {
                 // build the forest and get the roots 
                 arma::uvec admin_units = as<arma::uvec>(constr_inst["admin"]);
-                auto forest_result = build_admin_forest(map_params.g, admin_units);
+                auto admin_vertex_lists = build_admin_vertex_lists(map_params.g, admin_units);
                 plan_constraint_ptrs.emplace_back(
                     std::make_unique<PlanSplitsConstraint>(
                         strength, map_params.ndists,
-                        admin_units, forest_result.first, forest_result.second,
+                        admin_units, admin_vertex_lists,
+                        num_regions_to_score,
+                        hard_constraint, hard_threshold
+                    )
+                );
+            }
+        }
+    }
+    // total splits for whole plan
+    if (constraints.containsElementNamed("total_plan_splits")) {
+        Rcpp::List constr = constraints["total_plan_splits"];
+        for (int i = 0; i < constr.size(); i++) {
+            List constr_inst = constr[i];
+            double strength = constr_inst["strength"];
+            std::vector<bool> num_regions_to_score(map_params.ndists+1, true);
+            if (constr_inst.containsElementNamed("nregions_to_score")){
+                // The vector in R is one indexed but c++ is 0 indexed so need to pad an 
+                // extra element
+                num_regions_to_score = Rcpp::as<std::vector<bool>>(constr_inst["nregions_to_score"]);
+                num_regions_to_score.insert(num_regions_to_score.begin(), false);
+            }
+            bool hard_constraint = false;
+            if (constr_inst.containsElementNamed("hard_constraint")){
+                hard_constraint = as<bool>(constr_inst["hard_constraint"]);
+            }
+            double hard_threshold = 0.0;
+            if (constr_inst.containsElementNamed("hard_threshold")){
+                hard_threshold = as<double>(constr_inst["hard_threshold"]);
+            }
+            if (strength != 0) {
+                // build the forest and get the roots 
+                arma::uvec admin_units = as<arma::uvec>(constr_inst["admin"]);
+                auto admin_vertex_lists = build_admin_vertex_lists(map_params.g, admin_units);
+                plan_constraint_ptrs.emplace_back(
+                    std::make_unique<TotalPlanSplitsConstraint>(
+                        strength, map_params.ndists,
+                        admin_units, admin_vertex_lists,
+                        num_regions_to_score,
+                        hard_constraint, hard_threshold
+                    )
+                );
+            }
+        }
+    }
+    // districts with more than one incumbent 
+    if (constraints.containsElementNamed("plan_incumbency")) {
+        Rcpp::List constr = constraints["plan_incumbency"];
+        for (int i = 0; i < constr.size(); i++) {
+            List constr_inst = constr[i];
+            double strength = constr_inst["strength"];
+            std::vector<bool> num_regions_to_score(map_params.ndists+1, true);
+            if (constr_inst.containsElementNamed("nregions_to_score")){
+                // The vector in R is one indexed but c++ is 0 indexed so need to pad an 
+                // extra element
+                num_regions_to_score = Rcpp::as<std::vector<bool>>(constr_inst["nregions_to_score"]);
+                num_regions_to_score.insert(num_regions_to_score.begin(), false);
+            }
+            bool hard_constraint = false;
+            if (constr_inst.containsElementNamed("hard_constraint")){
+                hard_constraint = as<bool>(constr_inst["hard_constraint"]);
+            }
+            double hard_threshold = 0.0;
+            if (constr_inst.containsElementNamed("hard_threshold")){
+                hard_threshold = as<double>(constr_inst["hard_threshold"]);
+            }
+            if (strength != 0) {
+                plan_constraint_ptrs.emplace_back(
+                    std::make_unique<PlanIncumbentConstraint>(
+                        strength, map_params.ndists,
+                        map_params.is_district, as<arma::uvec>(constr_inst["incumbents"]),
+                        num_regions_to_score,
+                        hard_constraint, hard_threshold
+                    )
+                );
+            }
+        }
+    }
+    // counts the number of regions greater than or equal to a certain fraction
+    if (constraints.containsElementNamed("min_group_frac")) {
+        Rcpp::List constr = constraints["min_group_frac"];
+        for (int i = 0; i < constr.size(); i++) {
+            List constr_inst = constr[i];
+            double strength = constr_inst["strength"];
+            std::vector<bool> num_regions_to_score(map_params.ndists+1, true);
+            if (constr_inst.containsElementNamed("nregions_to_score")){
+                // The vector in R is one indexed but c++ is 0 indexed so need to pad an 
+                // extra element
+                num_regions_to_score = Rcpp::as<std::vector<bool>>(constr_inst["nregions_to_score"]);
+                num_regions_to_score.insert(num_regions_to_score.begin(), false);
+            }
+            bool hard_constraint = false;
+            if (constr_inst.containsElementNamed("hard_constraint")){
+                hard_constraint = as<bool>(constr_inst["hard_constraint"]);
+            }
+            double hard_threshold = 0.0;
+            if (constr_inst.containsElementNamed("hard_threshold")){
+                hard_threshold = as<double>(constr_inst["hard_threshold"]);
+            }
+            if (strength != 0) {
+                plan_constraint_ptrs.emplace_back(
+                    std::make_unique<MinGroupFracConstraint>(
+                        strength, map_params.ndists, map_params.is_district,
+                        as<std::vector<arma::vec>>(constr_inst["group_pops"]),
+                        as<std::vector<arma::vec>>(constr_inst["total_pops"]), 
+                        as<std::vector<double>>(constr_inst["min_fracs"]),
+                        as<double>(constr_inst["num_populations"]),
                         num_regions_to_score,
                         hard_constraint, hard_threshold
                     )
@@ -1370,8 +1617,6 @@ any_soft_custom_constraints(false), any_hard_custom_constraints(false){
 
         }
     }
-
-    
 
     // Add custom plan constraints 
     if (constraints.containsElementNamed("custom_plan")) {
@@ -1715,7 +1960,8 @@ bool ScoringFunction::new_split_ok(
 ) const{
     if(!any_hard_constraints) return true;
 
-    auto const num_regions = plan.num_regions - 1;
+    auto const num_regions = plan.num_regions;
+
 
     // check if new regions are multidistricts 
     bool const is_region1_district = map_params.is_district[plan.region_sizes[region1_id]];
