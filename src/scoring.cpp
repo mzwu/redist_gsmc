@@ -690,7 +690,7 @@ double PhaseCommuteConstraint::compute_raw_region_constraint_score(
             int region_id) const{
     double raw_score = eval_phase_commute_gsmc_version(
         region_ids, 
-        current, schools, commute_times, pop, V,
+        current, commute_times, pop, V,
         region_id);
 
     return raw_score;

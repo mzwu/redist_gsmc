@@ -291,38 +291,19 @@ template <typename PlanID>
 double eval_phase_commute_gsmc_version(
     PlanID const &region_ids, 
     const arma::uvec &current, 
-    const arma::uvec &schools, 
     const arma::mat &commute_times,
     arma::uvec const &pop,
     int const V, int const region_id) {
+    
     double reassigned_pop = 0.0;
+
     for (int k = 0; k < V; k++) {
-        if (region_ids[k] != region_id) continue; // only evaluate blocks in proposed district
+        if (region_ids(k) != region_id) continue; // only evaluate blocks in proposed district
 
-        // find school that is in proposed district and current district
-        int school_old_idx = -1;
-        int school_new_idx = -1;
-
-        for (int j = 0; j < schools.n_elem; j++) {
-            // check if school and block are in the same old district
-            if (current[schools[j]] == current[k]) {
-                school_old_idx = j;
-            }
-            // check if school and block are in the same proposed district
-            if (region_ids[schools[j]] == region_ids[k]) {
-                school_new_idx = j;
-            }
-            // both old zoned school and new zoned school have been found
-            if (school_old_idx != -1 && school_new_idx != -1) {
-                break;
-            }
-        }
-
-        // if schools are the same, no disruption
-        if (school_old_idx == school_new_idx) continue;
-        // if either school is not found, skip
-        if (school_old_idx == -1 || school_new_idx == -1) continue;
-
+        // get old and new districts of current block
+        int school_old_idx = current[k] - 1;
+        int school_new_idx = region_ids(k);
+        
         // compute and compare commute distances to old and new schools
         double commute_old = commute_times(k, school_old_idx);
         double commute_new = commute_times(k, school_new_idx);
@@ -357,33 +338,15 @@ double eval_max_commute_gsmc_version(
     const arma::mat &commute_times,
     arma::uvec const &pop,
     int const V, int const region_id) {
+
     double max_extra = 0.0;
+
     for (int k = 0; k < V; k++) {
         if (region_ids[k] != region_id) continue; // only evaluate blocks in proposed district
 
-        // find school that is in proposed district and current district
-        int school_old_idx = -1;
-        int school_new_idx = -1;
-
-        for (int j = 0; j < schools.n_elem; j++) {
-            // check if school and block are in the same old district
-            if (current[schools[j]] == current[k]) {
-                school_old_idx = j;
-            }
-            // check if school and block are in the same proposed district
-            if (region_ids[schools[j]] == region_ids[k]) {
-                school_new_idx = j;
-            }
-            // both old zoned school and new zoned school have been found
-            if (school_old_idx != -1 && school_new_idx != -1) {
-                break;
-            }
-        }
-
-        // if schools are the same, no disruption
-        if (school_old_idx == school_new_idx) continue;
-        // if either school is not found, skip
-        if (school_old_idx == -1 || school_new_idx == -1) continue;
+        // get old and new districts of current block
+        int school_old_idx = current[k] - 1;
+        int school_new_idx = region_ids(k);
 
         // compute and compare commute distances to old and new schools
         double commute_old = commute_times(k, school_old_idx);
@@ -412,7 +375,8 @@ double eval_split_feeders_gsmc_version(
     arma::uvec const &pop,
     int const V, int const region_id) {
     
-        // Which lower level districts are sending students to the current upper level district? How many?
+    // Which lower level districts are sending students to the current upper level district? How many?
+    // Key: lower level district ID, Value: number of students that lower level district sent to the current upper level district
     std::unordered_map<int, int> lower_students;
     for (int v = 0; v < V; ++v) {
         // Skip if not in current upper district
@@ -463,17 +427,20 @@ double eval_capacity_gsmc_version(
         }
     }
     
-    // What is the capacity of the current district
-    int school_index = region_id - 1; // assume region_id is 1-indexed and schools/schools_capacity are in ascending district ID order
-    double pop_capacity = schools_capacity(school_index);
+    // What is the capacity of the current district?
+    // Assume schools/schools_capacity are in ascending district ID order
+    double pop_capacity = schools_capacity(region_id);
 
+    // Estimate number of school-aged children in the district
+    double normalized_pop = pop_assigned / sum(pop) * sum(schools_capacity);
     // Calculate and compare ratio
-    double ratio = pop_assigned / pop_capacity;
+    double ratio = normalized_pop / pop_capacity;
+
     if (ratio < 0.85 || ratio > 1.15) {
-        return 20;
+        return 2;
     }
     else if ((0.85 <= ratio && ratio <= 0.94) || 1.05 <= ratio <= 1.14) {
-        return 10;
+        return 1;
     }
     else if (0.95 <= ratio && ratio <= 1.04) {
         return 0;

@@ -423,7 +423,6 @@ class PolsbyConstraint : public RegionConstraint {
 class PhaseCommuteConstraint : public RegionConstraint {
     private:
         arma::uvec const current;
-        arma::uvec const schools;
         arma::mat const commute_times;
         arma::uvec const pop;
         int const V;
@@ -435,7 +434,6 @@ class PhaseCommuteConstraint : public RegionConstraint {
             bool const score_districts_only, bool const hard_constraint, double const hard_threshold) :
             RegionConstraint(score_districts_only, strength, hard_constraint, hard_threshold),
             current(current),
-            schools(schools),
             commute_times(commute_times),
             pop(pop),
             V(V) {}
