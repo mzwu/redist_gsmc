@@ -334,7 +334,6 @@ template <typename PlanID>
 double eval_max_commute_gsmc_version(
     PlanID const &region_ids, 
     const arma::uvec &current, 
-    const arma::uvec &schools, 
     const arma::mat &commute_times,
     arma::uvec const &pop,
     int const V, int const region_id) {

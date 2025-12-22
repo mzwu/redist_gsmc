@@ -429,7 +429,7 @@ class PhaseCommuteConstraint : public RegionConstraint {
 
     public:
         PhaseCommuteConstraint(
-            double const strength, const arma::uvec &current, const arma::uvec &schools, 
+            double const strength, const arma::uvec &current, 
             const arma::mat &commute_times, arma::uvec const &pop, int const V,
             bool const score_districts_only, bool const hard_constraint, double const hard_threshold) :
             RegionConstraint(score_districts_only, strength, hard_constraint, hard_threshold),

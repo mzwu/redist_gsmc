@@ -1367,7 +1367,6 @@ any_soft_custom_constraints(false), any_hard_custom_constraints(false){
                     std::make_unique<PhaseCommuteConstraint>(
                         strength, 
                         as<arma::uvec>(constr_inst["current"]), 
-                        as<arma::uvec>(constr_inst["schools"]),
                         as<arma::mat>(constr_inst["commute_times"]),
                         map_params.pop, map_params.V,
                         constr_score_districts_only, hard_constraint, hard_threshold
