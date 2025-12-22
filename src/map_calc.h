@@ -298,11 +298,11 @@ double eval_phase_commute_gsmc_version(
     double reassigned_pop = 0.0;
 
     for (int k = 0; k < V; k++) {
-        if (region_ids(k) != region_id) continue; // only evaluate blocks in proposed district
+        if (region_ids[k] != region_id) continue; // only evaluate blocks in proposed district
 
         // get old and new districts of current block
         int school_old_idx = current[k] - 1;
-        int school_new_idx = region_ids(k);
+        int school_new_idx = region_ids[k];
         
         // compute and compare commute distances to old and new schools
         double commute_old = commute_times(k, school_old_idx);
@@ -346,7 +346,7 @@ double eval_max_commute_gsmc_version(
 
         // get old and new districts of current block
         int school_old_idx = current[k] - 1;
-        int school_new_idx = region_ids(k);
+        int school_new_idx = region_ids[k];
 
         // compute and compare commute distances to old and new schools
         double commute_old = commute_times(k, school_old_idx);
