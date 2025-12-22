@@ -161,7 +161,6 @@ add_constr_phase_commute(
   constr,
   strength,
   current,
-  schools,
   commute_times,
   only_districts = TRUE,
   thresh = NULL
@@ -182,6 +181,9 @@ add_constr_capacity(
   schools,
   schools_capacity,
   only_districts = TRUE,
+  thresh = NULL
+)
+
 add_constr_total_plan_splits(
   constr,
   strength,
@@ -262,17 +264,18 @@ having two or more incumbents be in the same district.}
 when the plan has a particular number of regions. A value of \code{FALSE} means
 the constraint will applied to plans at every step.}
 
-\item{schools}{A vector of unit indices for schools. For example, if there
-are three schools located in precincts that correspond to rows 1 and 2 of
-your \link{redist_map}, entering schools = c(1, 2) would indicate that.}
-
 \item{commute_times}{A numeric matrix (n_units × n_schools) of commute times
 (in seconds) from each geographical unit to each school. Can be computed via
 \code{redistmetrics::get_commute_matrix()}.}
 
 \item{lower}{The reference map for the split feeders constraint,, i.e. lower-level school attendance areas.}
 
+\item{schools}{A vector of unit indices for schools. For example, if there
+are three schools located in precincts that correspond to rows 1 and 2 of
+your \link{redist_map}, entering schools = c(1, 2) would indicate that.}
+
 \item{schools_capacity}{A vector of capacities for each school.}
+
 \item{group_pops}{A list of vectors of target group populations}
 
 \item{total_pops}{A list of vectors of total populations}

@@ -296,9 +296,11 @@ double eval_phase_commute_gsmc_version(
     int const V, int const region_id) {
     
     double reassigned_pop = 0.0;
+    double district_pop = 0.0;
 
     for (int k = 0; k < V; k++) {
         if (region_ids[k] != region_id) continue; // only evaluate blocks in proposed district
+        district_pop += pop[i];
 
         // get old and new districts of current block
         int school_old_idx = current[k] - 1;
@@ -313,13 +315,6 @@ double eval_phase_commute_gsmc_version(
         }
     }
 
-    // return log(1 + average extra commute time per person in the district)
-    double district_pop = 0.0;
-    for (size_t i = 0; i < region_ids.size(); ++i) {
-        if (region_ids[i] == static_cast<RegionID>(region_id)) {
-            district_pop += pop[i];
-        }
-    }
     double avg_extra = (district_pop > 0.0) ? (reassigned_pop / district_pop) : 0.0;
     return std::log1p(avg_extra);
 }
@@ -338,26 +333,23 @@ double eval_max_commute_gsmc_version(
     arma::uvec const &pop,
     int const V, int const region_id) {
 
-    double max_extra = 0.0;
+    double max_commute = 0.0;
 
     for (int k = 0; k < V; k++) {
         if (region_ids[k] != region_id) continue; // only evaluate blocks in proposed district
 
-        // get old and new districts of current block
-        int school_old_idx = current[k] - 1;
+        // get new district of current block
         int school_new_idx = region_ids[k];
 
-        // compute and compare commute distances to old and new schools
-        double commute_old = commute_times(k, school_old_idx);
+        // update max commute if needed
         double commute_new = commute_times(k, school_new_idx);
-        double commute_extra = commute_new - commute_old;
-        if (commute_extra > max_extra) {
-            max_extra = commute_extra;
+        if (commute_new > max_commute) {
+            max_commute = commute_new;
         }
     }
 
-    // return log(1 + max extra commute time for a person in the district)
-    return std::log1p(max_extra);
+    // return log(1 + max commute time for a person in the district)
+    return std::log1p(max_commute);
 }
 
 
