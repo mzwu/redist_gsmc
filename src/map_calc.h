@@ -300,7 +300,7 @@ double eval_phase_commute_gsmc_version(
 
     for (int k = 0; k < V; k++) {
         if (region_ids[k] != region_id) continue; // only evaluate blocks in proposed district
-        district_pop += pop[i];
+        district_pop += pop[k];
 
         // get old and new districts of current block
         int school_old_idx = current[k] - 1;
