@@ -205,7 +205,8 @@ int count_plan_incumbent_pairings(
         // ignore if not a district
         if(!region_is_district[region_reindex_vec[region_id]]) continue;
 
-        if(region_incumbent_counts[region_reindex_vec[region_id]] > 1){
+        // if(region_incumbent_counts[region_reindex_vec[region_id]] > 1){
+        if(region_incumbent_counts[region_reindex_vec[region_id]] != 1){
             districts_with_multiple_incumbents++;
         }
     }
