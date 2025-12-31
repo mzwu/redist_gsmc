@@ -1067,7 +1067,7 @@ double PlanIncumbentConstraint::compute_raw_merged_plan_constraint_score(
         plan.region_ids, 
         region_reindex_vec,
         region_is_district,
-        region_sizes
+        plan.region_sizes
     );
 
     return incumbent_count;
