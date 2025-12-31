@@ -181,16 +181,16 @@ int count_plan_incumbent_pairings(
     std::vector<int> &region_incumbent_counts, 
     PlanVector const &region_ids, 
     std::vector<int> const &region_reindex_vec,
-    std::vector<bool> const &region_is_district
+    std::vector<bool> const &region_is_district,
+    RegionSizes const &region_sizes
 ){
 
     // set each region to zero 
     std::fill(region_incumbent_counts.begin(), region_incumbent_counts.end(), 0);
 
+    int regions_with_incorrect_incumbents = 0;
 
-    int districts_with_multiple_incumbents = 0;
-
-    // Now we iterate through each incumbent 
+    // Now we iterate through each incumbent
     int n_inc = incumbents.size();
     for (int i = 0; i < n_inc; i++) {
         // find the region the incumbent is in
@@ -199,19 +199,40 @@ int count_plan_incumbent_pairings(
         region_incumbent_counts[incumbent_i_region]++;
     }
 
-    // Now count the number of districts with more than 1 incumbent 
-    for (size_t region_id = 0; region_id < region_incumbent_counts.size(); region_id++)
-    {
-        // ignore if not a district
-        if(!region_is_district[region_reindex_vec[region_id]]) continue;
-
-        // if(region_incumbent_counts[region_reindex_vec[region_id]] > 1){
-        if(region_incumbent_counts[region_reindex_vec[region_id]] != 1){
-            districts_with_multiple_incumbents++;
+    // Now count the number of regions with the incorrect number of incumbents
+    for (size_t region_id = 0; region_id < region_incumbent_counts.size(); region_id++) {
+        // check if the number of incumbents is correct
+        if(region_incumbent_counts[region_reindex_vec[region_id]] != region_sizes[region_reindex_vec[region_id]]){
+            regions_with_incorrect_incumbents++;
         }
     }
 
-    return districts_with_multiple_incumbents;
+    return regions_with_incorrect_incumbents;
+
+
+    // int districts_with_multiple_incumbents = 0;
+
+    // // Now we iterate through each incumbent 
+    // int n_inc = incumbents.size();
+    // for (int i = 0; i < n_inc; i++) {
+    //     // find the region the incumbent is in
+    //     auto const incumbent_i_region = region_reindex_vec[region_ids[incumbents[i] - 1]];
+    //     // increase the count
+    //     region_incumbent_counts[incumbent_i_region]++;
+    // }
+
+    // // Now count the number of districts with more than 1 incumbent 
+    // for (size_t region_id = 0; region_id < region_incumbent_counts.size(); region_id++)
+    // {
+    //     // ignore if not a district
+    //     if(!region_is_district[region_reindex_vec[region_id]]) continue;
+
+    //     if(region_incumbent_counts[region_reindex_vec[region_id]] > 1){
+    //         districts_with_multiple_incumbents++;
+    //     }
+    // }
+
+    // return districts_with_multiple_incumbents;
 
 }
 
@@ -1008,7 +1029,8 @@ double PlanIncumbentConstraint::compute_raw_plan_constraint_score(
         region_incumbent_counts, 
         region_ids, 
         region_reindex_vec,
-        region_is_district
+        region_is_district,
+        region_sizes
     );
 
     return incumbent_count;
@@ -1044,7 +1066,8 @@ double PlanIncumbentConstraint::compute_raw_merged_plan_constraint_score(
         region_incumbent_counts, 
         plan.region_ids, 
         region_reindex_vec,
-        region_is_district
+        region_is_district,
+        region_sizes
     );
 
     return incumbent_count;
