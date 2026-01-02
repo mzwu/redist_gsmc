@@ -18,7 +18,7 @@
 \alias{add_constr_log_st}
 \alias{add_constr_edges_rem}
 \alias{add_constr_plan_splits}
-\alias{add_constr_phase_commute}
+\alias{add_constr_commute}
 \alias{add_constr_split_feeders}
 \alias{add_constr_capacity}
 \alias{add_constr_total_plan_splits}
@@ -157,7 +157,7 @@ add_constr_plan_splits(
   thresh = NULL
 )
 
-add_constr_phase_commute(
+add_constr_commute(
   constr,
   strength,
   current,
@@ -225,7 +225,7 @@ add_constr_custom_plan(
 
 \item{strength}{The strength of the constraint. Higher values mean a more restrictive constraint.}
 
-\item{current}{The reference map for the phase-in school commute constraint,
+\item{current}{The reference map for the school commute constraint,
 i.e. the current attendance areas.}
 
 \item{only_districts}{Boolean indicating whether to only score districts or regions.}

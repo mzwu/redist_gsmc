@@ -821,7 +821,7 @@ legacy_print_smc_information <- function(name, all_runs, object, algo, div_rg, a
 #'
 #' Tells you for a given index what its original ancestor was.
 #'
-#' @param parent_mat Ancestor matrix where entry [i,j] equals the index of the
+#' @param parent_mat Ancestor matrix where entry (i,j) equals the index of the
 #' parent of particle i after step j
 #' @param steps_back How many steps back we should find the ancestors of (so
 #' parents are 1 step ancestors). Defaults to going all the way back to the
@@ -883,11 +883,11 @@ Input must be between 1 and the start_col value (you input {steps_back})")
 #' Gets a matrix of the original ancestors (ie first splits) of the particles
 #' at each step.
 #'
-#' @param parent_mat Ancestor matrix where entry [i,j] equals the index of the
+#' @param parent_mat Ancestor matrix where entry (i,j) equals the index of the
 #' parent of particle i after step j
 #'
 #' @returns indices of originals ancestors for particles at every iteration. So
-#' entry [s,j] is the original ancestor of particle j after step s
+#' entry (s,j) is the original ancestor of particle j after step s
 #' @noRd
 get_original_ancestors_mat <- function(parent_mat){
 

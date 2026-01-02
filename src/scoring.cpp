@@ -1369,8 +1369,8 @@ any_soft_custom_constraints(false), any_hard_custom_constraints(false){
                 ));
         }
     }
-    if (constraints.containsElementNamed("phase_commute")) {
-        Rcpp::List constr = constraints["phase_commute"];
+    if (constraints.containsElementNamed("commute")) {
+        Rcpp::List constr = constraints["commute"];
         for (int i = 0; i < constr.size(); i++) {
             List constr_inst = constr[i];
             double strength = constr_inst["strength"];

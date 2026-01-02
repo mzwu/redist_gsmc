@@ -1258,7 +1258,7 @@ add_constr_plan_splits <- function(
     add_to_constr(constr, "plan_splits", new_constr)
 }
 
-#' @param current The reference map for the phase-in school commute constraint,
+#' @param current The reference map for the school commute constraint,
 #' i.e. the current attendance areas.
 #' @param commute_times A numeric matrix (n_units × n_schools) of commute times
 #' (in seconds) from each geographical unit to each school. Can be computed via
@@ -1266,13 +1266,13 @@ add_constr_plan_splits <- function(
 #' @param only_districts Boolean indicating whether to only score districts or regions.
 #' @rdname constraints
 #' @export
-add_constr_phase_commute <- function(
-                            constr, 
-                            strength, 
-                            current, 
-                            commute_times, 
-                            only_districts = TRUE,
-                            thresh = NULL) {
+add_constr_commute <- function(
+                      constr, 
+                      strength,
+                      current, 
+                      commute_times, 
+                      only_districts = TRUE,
+                      thresh = NULL) {
     if (!inherits(constr, "redist_constr")) cli::cli_abort("Not a {.cls redist_constr} object")
     if (strength <= 0) cli::cli_warn("Nonpositive strength may lead to unexpected results")
     data <- attr(constr, "data")
@@ -1298,7 +1298,7 @@ add_constr_phase_commute <- function(
         cli::cli_abort("{.arg current} must be provided, and must have as many
                   precincts as the {.cls redist_map}")
 
-    add_to_constr(constr, "phase_commute", new_constr)
+    add_to_constr(constr, "commute", new_constr)
 }
 
 #' @param lower The reference map for the split feeders constraint,, i.e. lower-level school attendance areas.
