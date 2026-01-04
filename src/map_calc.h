@@ -428,10 +428,10 @@ double eval_capacity_gsmc_version(
     double ratio = normalized_pop / pop_capacity;
 
     if (ratio < 0.85) {
-        return 2 + abs(ratio - 0.85);
+        return 2 + 10 * abs(ratio - 0.85);
     }
     else if (ratio > 1.14) {
-        return 2 + abs(ratio - 1.14);
+        return 2 + 10 * abs(ratio - 1.14);
     }
     else if ((0.85 <= ratio && ratio <= 0.94) || 1.05 <= ratio && ratio <= 1.14) {
         return 1;
