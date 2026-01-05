@@ -710,7 +710,7 @@ double PhaseCommuteConstraint::compute_raw_region_constraint_score(
             int const num_regions, 
             PlanVector const &region_ids, RegionSizes const &region_sizes, IntPlanAttribute const &region_pops,
             int region_id) const{
-    double raw_score = eval_phase_commute_gsmc_version(
+    double raw_score = eval_max_commute_gsmc_version(
         region_ids, 
         current, commute_times, pop, V,
         region_id);
