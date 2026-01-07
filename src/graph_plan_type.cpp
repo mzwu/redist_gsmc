@@ -538,7 +538,6 @@ void estimate_cut_k(
     // For each k, compute pr(selected edge within top k),
     // among maps where valid edge was selected
     for (k = 1; k <= k_max; k++) {
-        Rcout << "DEBUG: k = " << k << "\n";
         double sum_within = 0;
         int n_ok = 0;
         for (int i = 0; i < N_adapt; i++) {
@@ -552,6 +551,8 @@ void estimate_cut_k(
         }
         if (sum_within / n_ok >= thresh) break;
     }
+
+    Rcout << "DEBUG: k = " << k << "\n";
 
     if (k >= k_max) {
         if (verbosity >= 3) {
