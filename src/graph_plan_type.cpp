@@ -226,19 +226,19 @@ int estimate_mergesplit_cut_k(
     int k;
     // sample some spanning trees and compute deviances
     int V = plan_multigraph.map_params.g.size();
-    Rcerr << "Warning: V = " << V << "\n";
+    Rcerr << "DEBUG: V = " << V << "\n";
     // IN FUTURE USE MY OWN FUNCTION THIS HAS INEXING ERRORS
     // Graph dist_g = district_graph(g, region_ids, n_distr, true);
     int k_max = std::min(20 + ((int) std::sqrt(V)), V - 1); // heuristic
-    Rcerr << "Warning: k_max = " << k_max << "\n";
+    Rcerr << "DEBUG: k_max = " << k_max << "\n";
     int N_adapt = (int) std::floor(4000.0 / sqrt((double) V));
-    Rcerr << "Warning: N_adapt = " << N_adapt << "\n";
+    Rcerr << "DEBUG: N_adapt = " << N_adapt << "\n";
     
 
     double lower = plan_multigraph.map_params.target * (1 - tol);
     double upper = plan_multigraph.map_params.target * (1 + tol);
-    Rcerr << "Warning: lower = " << lower << "\n";
-    Rcerr << "Warning: upper = " << upper << "\n";
+    Rcerr << "DEBUG: lower = " << lower << "\n";
+    Rcerr << "DEBUG: upper = " << upper << "\n";
     
     std::vector<std::vector<double>> devs;
     vec distr_ok(k_max+1, fill::zeros);
@@ -260,7 +260,7 @@ int estimate_mergesplit_cut_k(
     int max_V = 0;
     Tree ust = init_tree(V);
     for (int i = 0; i < N_adapt; i++) {
-        Rcerr << "Warning: i = " << i << "\n";
+        Rcerr << "DEBUG: i = " << i << "\n";
         double joint_pop = 0;
         auto random_pair_index = rng_state.r_int(plan_multigraph.pair_map.hashed_pairs.size());
         auto a_pair = plan_multigraph.pair_map.hashed_pairs[random_pair_index];
@@ -270,7 +270,7 @@ int estimate_mergesplit_cut_k(
         int n_vtx = 0;
         for (int j = 0; j < V; j++) {
             if (plan.region_ids[j] == a_pair.first || plan.region_ids[j] == a_pair.second) {
-                Rcerr << "Warning: ignore false, incrementing n_vtx\n";
+                Rcerr << "DEBUG: ignore false, incrementing n_vtx\n";
                 joint_pop += plan_multigraph.map_params.pop(j);
                 ignore[j] = false;
                 n_vtx++;
@@ -327,7 +327,7 @@ int estimate_mergesplit_cut_k(
     // For each k, compute pr(selected edge within top k),
     // among maps where valid edge was selected
     for (k = 1; k <= k_max; k++) {
-        Rcerr << "Warning: k = " << k << "\n";
+        Rcerr << "DEBUG: k = " << k << "\n";
         double sum_within = 0;
         int n_ok = 0;
         for (int i = 0; i < N_adapt; i++) {
@@ -348,7 +348,7 @@ int estimate_mergesplit_cut_k(
         k = max_ok + 1;
     }
 
-    Rcerr << "Warning: final k = " << k << " max_V = " << max_V << "\n";
+    Rcerr << "DEBUG: final k = " << k << " max_V = " << max_V << "\n";
     k = std::min(k, max_V - 1);
     return(k);
 }
@@ -366,14 +366,22 @@ void estimate_cut_k(
     int const verbosity) {
     // sample some spanning trees and compute deviances
     int V = map_params.V;
+    Rcout << "DEBUG: V = " << V << "\n";
     int k_max = std::min(10 + (int) (2.0 * V * tol), last_k + 4); // heuristic
+    Rcout << "DEBUG: k_max = " << k_max << "\n";
     int N_max = plan_ptrs_vec.size();
+    Rcout << "DEBUG: N_max = " << N_max << "\n";
     int N_adapt = std::min(60 + (int) std::floor(5000.0 / sqrt((double)V)), N_max);
+    Rcout << "DEBUG: N_adapt = " << N_adapt << "\n";
 
     double target = map_params.target;
+    Rcout << "DEBUG: target = " << target << "\n";
     double lower = target * (1 - tol);
+    Rcout << "DEBUG: lower = " << lower << "\n";
     double upper = target * (1 + tol);
+    Rcout << "DEBUG: upper = " << upper << "\n";
     int num_regions = plan_ptrs_vec[0]->num_regions;
+    Rcout << "DEBUG: num_regions = " << num_regions << "\n";
 
     std::vector<std::vector<double>> devs;
     devs.reserve(N_adapt);
@@ -402,6 +410,7 @@ void estimate_cut_k(
     for (int i = 0; i < N_max && idx < N_adapt; i++, idx++) {
         if (unnormalized_weights.at(i) == 0) { // skip if not valid
             idx--;
+            Rcout << "DEBUG: skipping, idx = " << idx << "\n";
             continue;
         }
 
@@ -451,6 +460,7 @@ void estimate_cut_k(
             if (plan_ptrs_vec.at(i)->region_ids[j] != biggest_region_id) {
                 ignore[j] = true;
                 n_vtx--;
+                Rcout << "DEBUG: decrementing, n_vtx = " << n_vtx << "\n";
             }
         }
         
@@ -462,7 +472,10 @@ void estimate_cut_k(
         // plan_ptrs_vec.at(i)->Rprint();
         // Rprintf("\n\n");
 
-        if (n_vtx > max_V) max_V = n_vtx;
+        if (n_vtx > max_V) {
+            max_V = n_vtx;
+            Rcout << "DEBUG: updating max_V = " << max_V << "\n";
+        }
 
         clear_tree(ust);
         int result = sample_sub_ust(
@@ -480,6 +493,7 @@ void estimate_cut_k(
             
         if (result != 0) {
             idx--;
+            Rcout << "DEBUG: decrementing, idx = " << idx << "\n";
             continue;
         }
 
@@ -505,20 +519,26 @@ void estimate_cut_k(
                 break;
             }
         }
+        Rcout << "DEBUG: n_ok = " << n_ok << "\n";
 
         if (n_ok <= k_max)
             distr_ok(n_ok) += 1.0 / N_adapt;
         if (n_ok > max_ok && n_ok < k_max){
             max_ok = n_ok;
+            Rcout << "DEBUG: max_ok = " << max_ok << "\n";
         }
             
         Rcpp::checkUserInterrupt();
     }
 
-    if (idx < N_adapt) N_adapt = idx; // if rejected too many in last step
+    if (idx < N_adapt) {
+        N_adapt = idx; // if rejected too many in last step
+        Rcout << "DEBUG: N_adapt = " << N_adapt << "\n";
+    } 
     // For each k, compute pr(selected edge within top k),
     // among maps where valid edge was selected
     for (k = 1; k <= k_max; k++) {
+        Rcout << "DEBUG: k = " << k << "\n";
         double sum_within = 0;
         int n_ok = 0;
         for (int i = 0; i < N_adapt; i++) {
@@ -540,8 +560,12 @@ void estimate_cut_k(
         k = max_ok;
     }
 
-    if (last_k < k_max && k < last_k * 0.6) k = (int) (0.5*k + 0.5*last_k);
+    if (last_k < k_max && k < last_k * 0.6) {
+        k = (int) (0.5*k + 0.5*last_k);
+        Rcout << "DEBUG: last_k=" << last_k << ", adjusting k to " << k << "\n";
+    } 
 
+    Rcout << "DEBUG: k = " << k << ", max_ok = " << max_ok << "distr_ok(k)=" << distr_ok(k) << ", thresh=" << thresh << ", max_V=" << max_V << "\n";
     k = std::min(std::max(max_ok + 1, k) + 1 - (distr_ok(k) > 0.99) + (thresh == 1),
                  max_V - 1);
 }
