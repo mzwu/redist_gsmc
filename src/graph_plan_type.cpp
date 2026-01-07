@@ -226,14 +226,19 @@ int estimate_mergesplit_cut_k(
     int k;
     // sample some spanning trees and compute deviances
     int V = plan_multigraph.map_params.g.size();
+    Rcerr << "DEBUG: V = " << V << "\n";
     // IN FUTURE USE MY OWN FUNCTION THIS HAS INEXING ERRORS
     // Graph dist_g = district_graph(g, region_ids, n_distr, true);
     int k_max = std::min(20 + ((int) std::sqrt(V)), V - 1); // heuristic
+    Rcerr << "DEBUG: k_max = " << k_max << "\n";
     int N_adapt = (int) std::floor(4000.0 / sqrt((double) V));
+    Rcerr << "DEBUG: N_adapt = " << N_adapt << "\n";
     
 
     double lower = plan_multigraph.map_params.target * (1 - tol);
     double upper = plan_multigraph.map_params.target * (1 + tol);
+    Rcerr << "DEBUG: lower = " << lower << "\n";
+    Rcerr << "DEBUG: upper = " << upper << "\n";
     
     std::vector<std::vector<double>> devs;
     vec distr_ok(k_max+1, fill::zeros);
@@ -255,6 +260,7 @@ int estimate_mergesplit_cut_k(
     int max_V = 0;
     Tree ust = init_tree(V);
     for (int i = 0; i < N_adapt; i++) {
+        Rcerr << "DEBUG: i = " << i << "\n";
         double joint_pop = 0;
         auto random_pair_index = rng_state.r_int(plan_multigraph.pair_map.hashed_pairs.size());
         auto a_pair = plan_multigraph.pair_map.hashed_pairs[random_pair_index];
@@ -264,6 +270,7 @@ int estimate_mergesplit_cut_k(
         int n_vtx = 0;
         for (int j = 0; j < V; j++) {
             if (plan.region_ids[j] == a_pair.first || plan.region_ids[j] == a_pair.second) {
+                Rcerr << "DEBUG: ignore false, incrementing n_vtx\n";
                 joint_pop += plan_multigraph.map_params.pop(j);
                 ignore[j] = false;
                 n_vtx++;
@@ -320,6 +327,7 @@ int estimate_mergesplit_cut_k(
     // For each k, compute pr(selected edge within top k),
     // among maps where valid edge was selected
     for (k = 1; k <= k_max; k++) {
+        Rcerr << "DEBUG: k = " << k << "\n";
         double sum_within = 0;
         int n_ok = 0;
         for (int i = 0; i < N_adapt; i++) {
@@ -340,6 +348,7 @@ int estimate_mergesplit_cut_k(
         k = max_ok + 1;
     }
 
+    Rcerr << "DEBUG: final k = " << k << " max_V = " << max_V << "\n";
     k = std::min(k, max_V - 1);
     return(k);
 }
