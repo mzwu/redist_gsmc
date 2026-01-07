@@ -460,7 +460,7 @@ void estimate_cut_k(
             if (plan_ptrs_vec.at(i)->region_ids[j] != biggest_region_id) {
                 ignore[j] = true;
                 n_vtx--;
-                Rcout << "DEBUG: decrementing, n_vtx = " << n_vtx << "\n";
+                // Rcout << "DEBUG: decrementing, n_vtx = " << n_vtx << "\n";
             }
         }
         
