@@ -427,17 +427,13 @@ double eval_capacity_gsmc_version(
     // Calculate and compare ratio
     double ratio = normalized_pop / pop_capacity;
 
-    // maybe just do 50*abs(ratio - 1)?
-    if (ratio < 0.85) {
-        return 2 + 50 * abs(ratio - 0.85);
+    if (ratio < 0.95) {
+        return 10 * abs(ratio - 0.95);
     }
-    else if (ratio > 1.14) {
-        return 2 + 50 * abs(ratio - 1.14);
+    else if (ratio > 1.04) {
+        return 10 * abs(ratio - 1.04);
     }
-    else if ((0.85 <= ratio && ratio <= 0.94) || 1.05 <= ratio && ratio <= 1.14) {
-        return 1;
-    }
-    else if (0.95 <= ratio && ratio <= 1.04) {
+    else {
         return 0;
     }
 }
