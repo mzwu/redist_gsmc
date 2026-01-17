@@ -316,7 +316,7 @@ double eval_phase_commute_gsmc_version(
     }
 
     double avg_extra = (district_pop > 0.0) ? (reassigned_pop / district_pop) : 0.0;
-    return std::log1p(avg_extra);
+    return avg_extra / 60.0; // convert to minutes
 }
 
 
@@ -348,8 +348,8 @@ double eval_max_commute_gsmc_version(
         }
     }
 
-    // return log(1 + max commute time for a person in the district)
-    return std::log1p(max_commute);
+    // return max commute time for a person in the district
+    return max_commute / 60.0; // convert to minutes
 }
 
 
